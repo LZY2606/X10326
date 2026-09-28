@@ -1,0 +1,159 @@
+plugins {
+	id 'java'
+	id 'eclipse'
+	id 'maven-publish'
+	id 'signing'
+	id 'org.cadixdev.licenser' version '0.6.1'
+}
+
+group = "blue.endless";
+version = "2.0.0";
+def versionSuffix = '-alpha.3'
+
+if (project.hasProperty("versionSuffix")) {
+	versionSuffix = '-'+project.versionSuffix;
+}
+if (project.hasProperty("buildNumber")) {
+	versionSuffix += '-'+project.buildNumber;
+}
+
+version += versionSuffix;
+
+tasks.withType(JavaCompile).configureEach {
+	options.encoding = "UTF-8"
+}
+
+base {
+	archivesName = "Jankson";
+}
+
+repositories {
+	mavenCentral();
+}
+
+java {
+	sourceCompatibility = targetCompatibility = JavaVersion.VERSION_21
+	withSourcesJar();
+	withJavadocJar();
+}
+
+jar {
+	manifest {
+		attributes(
+			"Automatic-Module-Name" : "jankson"
+		);
+	}
+}
+
+tasks.withType(Javadoc).configureEach {
+	failOnError false
+	//options.addBooleanOption("Xdoclint:none", true)
+	options.addStringOption("Xdoclint:none", "-quiet")
+	options.addStringOption("Xmaxwarns", "1")
+}
+
+publishing {
+	publications {
+		mavenPrimary(MavenPublication) {
+			from components.java;
+			
+
+			groupId project.group;
+			artifactId "jankson";
+			version project.version;
+			
+			pom {
+				name = "Jankson";
+				description = "JSON5 / HJSON parser and preprocessor which preserves ordering and comments";
+				url = "https://github.com/falkreon/Jankson";
+				
+				developers {
+					developer {
+						id = "falkreon"
+						name = "Isaac Ellingson"
+						email = "falkreon@gmail.com"
+					}
+				}
+				
+				licenses {
+					license {
+						name = "MIT License"
+						url = "https://opensource.org/licenses/MIT"
+						distribution = "repo"
+					}
+				}
+				
+				scm {
+					url = "https://github.com/falkreon/Jankson"
+					connection = "scm:git:git@github.com:falkreon/Jankson.git"
+					developerConnection = "scm:git:git@github.com:falkreon/Jankson.git"
+				}
+			}
+		}
+	}
+	
+	repositories {
+		if (project.hasProperty("ossrhUsername")) {
+			maven {
+				def releasesRepoUrl = "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
+				def snapshotsRepoUrl = "https://oss.sonatype.org/content/repositories/snapshots/"
+				url = releasesRepoUrl; //version.endsWith('SNAPSHOT') ? snapshotsRepoUrl : releasesRepoUrl
+				
+				credentials {
+					username = ossrhUsername
+					password = ossrhPassword
+				}
+				
+			}
+		}
+		
+		if (project.hasProperty("sleepingUsername")) {
+			maven {
+				url "https://repo-api.sleeping.town/"
+				
+				credentials {
+					username = sleepingUsername
+					password = sleepingPassword
+				}
+			}
+		}
+	}
+}
+
+if (file("private.gradle").exists()) {
+	apply from: "private.gradle";
+}
+
+defaultTasks "clean", "build";
+
+
+dependencies {
+	testImplementation(platform('org.junit:junit-bom:5.9.2'))
+	testImplementation('org.junit.jupiter:junit-jupiter')
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	
+	compileOnly group: "com.google.code.findbugs", name: "jsr305", version: "3.0.2";
+	testImplementation group: "com.google.code.findbugs", name: "jsr305", version: "3.0.2";
+}
+
+test {
+	useJUnitPlatform()
+}
+
+signing {
+	if (project.hasProperty("signing.keyId")) {
+		println("Key credentials found. Enabling jar signing.");
+		sign configurations.archives;
+		sign publishing.publications.mavenPrimary
+		
+		
+		// Use the big hammer to establish dependencies that should already be there
+		tasks.named("publish").configure { dependsOn("signArchives") }
+		tasks.named("publishAllPublicationsToMavenRepository").configure { dependsOn("signArchives") }
+		tasks.named("publishMavenPrimaryPublicationToMavenLocal").configure { dependsOn("signArchives") }
+		tasks.named("publishMavenPrimaryPublicationToMavenRepository").configure { dependsOn("signArchives") }
+		tasks.named("publishToMavenLocal").configure { dependsOn("signArchives") }
+	} else {
+		println("Skipping jar signing");
+	}
+}
